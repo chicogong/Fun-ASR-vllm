@@ -76,34 +76,47 @@ else
     cd "$INSTALL_DIR"
 fi
 
-# Step 3: Install dependencies
-echo -e "${GREEN}[3/5]${NC} Installing dependencies..."
+# Step 3: Setup Python environment
+echo -e "${GREEN}[3/5]${NC} Setting up Python environment..."
 
-# Try to find new_tts conda environment
+ENV_NAME="funasr-vllm"
 PYTHON_CMD="python"
-if [ -f "/opt/conda/envs/new_tts/bin/python" ]; then
-    PYTHON_CMD="/opt/conda/envs/new_tts/bin/python"
-    echo "  Using conda environment: new_tts"
-    echo "  Python path: $PYTHON_CMD"
-elif command -v conda &> /dev/null; then
+
+# Check if conda is available
+if command -v conda &> /dev/null; then
     CONDA_BASE=$(conda info --base 2>/dev/null)
-    if [ -n "$CONDA_BASE" ] && [ -f "$CONDA_BASE/envs/new_tts/bin/python" ]; then
-        PYTHON_CMD="$CONDA_BASE/envs/new_tts/bin/python"
-        echo "  Using conda environment: new_tts"
+    if [ -n "$CONDA_BASE" ] && [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
+        source "$CONDA_BASE/etc/profile.d/conda.sh"
+        
+        # Check if environment exists
+        if conda env list | grep -q "^${ENV_NAME} "; then
+            echo "  Found existing conda environment: $ENV_NAME"
+            conda activate "$ENV_NAME"
+            PYTHON_CMD="$CONDA_BASE/envs/$ENV_NAME/bin/python"
+        else
+            echo "  Creating conda environment: $ENV_NAME (Python 3.10)..."
+            conda create -n "$ENV_NAME" python=3.10 -y -q
+            conda activate "$ENV_NAME"
+            PYTHON_CMD="$CONDA_BASE/envs/$ENV_NAME/bin/python"
+            
+            echo "  Installing dependencies..."
+            pip install -q --upgrade pip
+            pip install -q vllm>=0.10.0 fastapi "uvicorn[standard]" python-multipart torchaudio funasr>=1.2.7 || {
+                echo -e "${YELLOW}[WARN]${NC} Some packages may have failed. Trying requirements.txt..."
+                pip install -q -r requirements.txt || true
+            }
+        fi
         echo "  Python path: $PYTHON_CMD"
     fi
-fi
-
-# Install Python packages (only if not using pre-configured env)
-if [ "$PYTHON_CMD" = "python" ]; then
-    echo "  Installing Python packages..."
+else
+    # No conda, use pip directly
+    echo "  Conda not found, using system Python..."
+    echo "  Installing dependencies..."
     pip install -q --upgrade pip 2>/dev/null || true
-    pip install -q vllm>=0.10.0 fastapi uvicorn[standard] python-multipart torchaudio funasr>=1.2.7 2>/dev/null || {
+    pip install -q vllm>=0.10.0 fastapi "uvicorn[standard]" python-multipart torchaudio funasr>=1.2.7 2>/dev/null || {
         echo -e "${YELLOW}[WARN]${NC} Some packages may have failed. Trying requirements.txt..."
         pip install -q -r requirements.txt 2>/dev/null || true
     }
-else
-    echo "  Dependencies already installed in conda environment"
 fi
 
 # Step 4: Kill existing processes
@@ -122,6 +135,12 @@ echo -e "    GPU Memory: ${YELLOW}$FUNASR_VLLM_GPU_MEM${NC}"
 echo -e "    Port:       ${YELLOW}$PORT${NC}"
 echo ""
 
+# Build activation command for conda
+CONDA_ACTIVATE_CMD=""
+if [ -n "$CONDA_BASE" ] && [ "$PYTHON_CMD" != "python" ]; then
+    CONDA_ACTIVATE_CMD="source $CONDA_BASE/etc/profile.d/conda.sh && conda activate $ENV_NAME && "
+fi
+
 # Start in foreground or background based on TTY
 if [ -t 0 ]; then
     echo -e "${YELLOW}[NOTE]${NC} First startup may take 1-2 minutes to download models..."
@@ -132,15 +151,9 @@ if [ -t 0 ]; then
 else
     echo -e "${GREEN}[INFO]${NC} Starting in background mode..."
     echo -e "${GREEN}[INFO]${NC} Using Python: $PYTHON_CMD"
-    # Start with explicit Python path and environment variables
+    # Start with conda activation and environment variables
     cd "$INSTALL_DIR"
-    nohup env \
-        FUNASR_MODEL_DIR="$FUNASR_MODEL_DIR" \
-        FUNASR_VLLM_MODEL_DIR="$FUNASR_VLLM_MODEL_DIR" \
-        FUNASR_DEVICE="$FUNASR_DEVICE" \
-        FUNASR_VLLM_GPU_MEM="$FUNASR_VLLM_GPU_MEM" \
-        FUNASR_VLLM_MAX_MODEL_LEN="$FUNASR_VLLM_MAX_MODEL_LEN" \
-        $PYTHON_CMD api_server.py > /tmp/funasr_server.log 2>&1 &
+    nohup bash -c "${CONDA_ACTIVATE_CMD}FUNASR_MODEL_DIR='$FUNASR_MODEL_DIR' FUNASR_VLLM_MODEL_DIR='$FUNASR_VLLM_MODEL_DIR' FUNASR_DEVICE='$FUNASR_DEVICE' FUNASR_VLLM_GPU_MEM='$FUNASR_VLLM_GPU_MEM' FUNASR_VLLM_MAX_MODEL_LEN='$FUNASR_VLLM_MAX_MODEL_LEN' $PYTHON_CMD api_server.py" > /tmp/funasr_server.log 2>&1 &
     SERVER_PID=$!
     echo -e "${GREEN}[INFO]${NC} Server PID: $SERVER_PID"
     echo -e "${GREEN}[INFO]${NC} Log file: /tmp/funasr_server.log"

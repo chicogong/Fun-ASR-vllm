@@ -33,15 +33,18 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Check if conda is available
+ENV_NAME="funasr-vllm"
 if command -v conda &> /dev/null; then
-    echo -e "${GREEN}[INFO]${NC} Activating conda environment..."
-    # Try to activate new_tts environment
-    if conda env list | grep -q "new_tts"; then
-        source "$(conda info --base)/etc/profile.d/conda.sh"
-        conda activate new_tts
-        echo -e "${GREEN}[INFO]${NC} Activated: new_tts"
+    echo -e "${GREEN}[INFO]${NC} Checking conda environment..."
+    source "$(conda info --base)/etc/profile.d/conda.sh"
+    
+    if conda env list | grep -q "^${ENV_NAME} "; then
+        conda activate "$ENV_NAME"
+        echo -e "${GREEN}[INFO]${NC} Activated: $ENV_NAME"
     else
-        echo -e "${YELLOW}[WARN]${NC} new_tts environment not found, using current Python"
+        echo -e "${YELLOW}[WARN]${NC} $ENV_NAME environment not found"
+        echo -e "${YELLOW}[INFO]${NC} Run 'curl -sSL https://raw.githubusercontent.com/chicogong/Fun-ASR-vllm/main/install.sh | bash' to setup"
+        exit 1
     fi
 fi
 
