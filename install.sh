@@ -79,18 +79,23 @@ fi
 # Step 3: Install dependencies
 echo -e "${GREEN}[3/5]${NC} Installing dependencies..."
 
-# Try conda first
+# Try conda first - and export for later use
+CONDA_ACTIVATE=""
 if command -v conda &> /dev/null; then
-    if conda env list | grep -q "new_tts"; then
-        echo "  Activating conda environment: new_tts"
-        source "$(conda info --base)/etc/profile.d/conda.sh"
-        conda activate new_tts
+    CONDA_BASE=$(conda info --base 2>/dev/null)
+    if [ -n "$CONDA_BASE" ] && [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
+        source "$CONDA_BASE/etc/profile.d/conda.sh"
+        if conda env list | grep -q "new_tts"; then
+            echo "  Activating conda environment: new_tts"
+            conda activate new_tts
+            CONDA_ACTIVATE="source $CONDA_BASE/etc/profile.d/conda.sh && conda activate new_tts && "
+        fi
     fi
 fi
 
 # Install Python packages
 echo "  Installing Python packages..."
-pip install -q --upgrade pip
+pip install -q --upgrade pip 2>/dev/null || true
 pip install -q vllm>=0.10.0 fastapi uvicorn[standard] python-multipart torchaudio funasr>=1.2.7 2>/dev/null || {
     echo -e "${YELLOW}[WARN]${NC} Some packages may have failed. Trying requirements.txt..."
     pip install -q -r requirements.txt 2>/dev/null || true
@@ -121,7 +126,8 @@ if [ -t 0 ]; then
     $PYTHON_CMD api_server.py
 else
     echo -e "${GREEN}[INFO]${NC} Starting in background mode..."
-    nohup $PYTHON_CMD api_server.py > /tmp/funasr_server.log 2>&1 &
+    # Use bash -c to properly handle conda activation in background
+    nohup bash -c "${CONDA_ACTIVATE}cd $INSTALL_DIR && $PYTHON_CMD api_server.py" > /tmp/funasr_server.log 2>&1 &
     SERVER_PID=$!
     echo -e "${GREEN}[INFO]${NC} Server PID: $SERVER_PID"
     echo -e "${GREEN}[INFO]${NC} Log file: /tmp/funasr_server.log"
