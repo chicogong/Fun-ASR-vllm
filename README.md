@@ -60,6 +60,52 @@ if __name__ == "__main__":
     main()
 ```
 
+### External API (FastAPI)
+
+We provide a lightweight HTTP API in `api_server.py` for external callers.
+
+Start the server:
+
+```bash
+uvicorn api_server:app --host 0.0.0.0 --port 8080
+```
+
+Environment variables:
+
+- `FUNASR_MODEL_DIR` (default: `FunAudioLLM/Fun-ASR-Nano-2512`)
+- `FUNASR_VLLM_MODEL_DIR` (optional, enable vLLM)
+- `FUNASR_DEVICE` (default: `cuda:0`)
+- `FUNASR_VLLM_GPU_MEM` (default: `0.4`)
+- `FUNASR_VLLM_MAX_TOKENS` (default: `500`)
+- `FUNASR_VLLM_TOP_P` (default: `0.001`)
+
+Example (multipart upload):
+
+```bash
+curl -X POST "http://localhost:8080/asr/file" \
+  -F "file=@/path/to/audio.wav" \
+  -F "language=中文" \
+  -F "itn=true" \
+  -F "hotwords=腾讯,语音"
+```
+
+Example (base64 JSON):
+
+```bash
+python - <<'PY'
+import base64, json, requests
+audio = open("/path/to/audio.wav","rb").read()
+payload = {
+  "audio_b64": base64.b64encode(audio).decode(),
+  "audio_format": "wav",
+  "language": "中文",
+  "itn": True,
+  "hotwords": ["腾讯","语音"]
+}
+print(requests.post("http://localhost:8080/asr", json=payload).json())
+PY
+```
+
 
 For multilingual [FunAudioLLM/Fun-ASR-MLT-Nano-2512](http://huggingface.co/FunAudioLLM/Fun-ASR-MLT-Nano-2512):
 
