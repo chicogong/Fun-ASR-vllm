@@ -79,27 +79,32 @@ fi
 # Step 3: Install dependencies
 echo -e "${GREEN}[3/5]${NC} Installing dependencies..."
 
-# Try conda first - and export for later use
-CONDA_ACTIVATE=""
-if command -v conda &> /dev/null; then
+# Try to find new_tts conda environment
+PYTHON_CMD="python"
+if [ -f "/opt/conda/envs/new_tts/bin/python" ]; then
+    PYTHON_CMD="/opt/conda/envs/new_tts/bin/python"
+    echo "  Using conda environment: new_tts"
+    echo "  Python path: $PYTHON_CMD"
+elif command -v conda &> /dev/null; then
     CONDA_BASE=$(conda info --base 2>/dev/null)
-    if [ -n "$CONDA_BASE" ] && [ -f "$CONDA_BASE/etc/profile.d/conda.sh" ]; then
-        source "$CONDA_BASE/etc/profile.d/conda.sh"
-        if conda env list | grep -q "new_tts"; then
-            echo "  Activating conda environment: new_tts"
-            conda activate new_tts
-            CONDA_ACTIVATE="source $CONDA_BASE/etc/profile.d/conda.sh && conda activate new_tts && "
-        fi
+    if [ -n "$CONDA_BASE" ] && [ -f "$CONDA_BASE/envs/new_tts/bin/python" ]; then
+        PYTHON_CMD="$CONDA_BASE/envs/new_tts/bin/python"
+        echo "  Using conda environment: new_tts"
+        echo "  Python path: $PYTHON_CMD"
     fi
 fi
 
-# Install Python packages
-echo "  Installing Python packages..."
-pip install -q --upgrade pip 2>/dev/null || true
-pip install -q vllm>=0.10.0 fastapi uvicorn[standard] python-multipart torchaudio funasr>=1.2.7 2>/dev/null || {
-    echo -e "${YELLOW}[WARN]${NC} Some packages may have failed. Trying requirements.txt..."
-    pip install -q -r requirements.txt 2>/dev/null || true
-}
+# Install Python packages (only if not using pre-configured env)
+if [ "$PYTHON_CMD" = "python" ]; then
+    echo "  Installing Python packages..."
+    pip install -q --upgrade pip 2>/dev/null || true
+    pip install -q vllm>=0.10.0 fastapi uvicorn[standard] python-multipart torchaudio funasr>=1.2.7 2>/dev/null || {
+        echo -e "${YELLOW}[WARN]${NC} Some packages may have failed. Trying requirements.txt..."
+        pip install -q -r requirements.txt 2>/dev/null || true
+    }
+else
+    echo "  Dependencies already installed in conda environment"
+fi
 
 # Step 4: Kill existing processes
 echo -e "${GREEN}[4/5]${NC} Checking for existing processes..."
@@ -123,11 +128,13 @@ if [ -t 0 ]; then
     echo -e "${GREEN}[INFO]${NC} Server starting at ${BLUE}http://0.0.0.0:$PORT${NC}"
     echo -e "${GREEN}[INFO]${NC} Press Ctrl+C to stop"
     echo ""
-    $PYTHON_CMD api_server.py
+    cd "$INSTALL_DIR" && $PYTHON_CMD api_server.py
 else
     echo -e "${GREEN}[INFO]${NC} Starting in background mode..."
-    # Use bash -c to properly handle conda activation in background
-    nohup bash -c "${CONDA_ACTIVATE}cd $INSTALL_DIR && $PYTHON_CMD api_server.py" > /tmp/funasr_server.log 2>&1 &
+    echo -e "${GREEN}[INFO]${NC} Using Python: $PYTHON_CMD"
+    # Start with explicit Python path
+    cd "$INSTALL_DIR"
+    nohup $PYTHON_CMD api_server.py > /tmp/funasr_server.log 2>&1 &
     SERVER_PID=$!
     echo -e "${GREEN}[INFO]${NC} Server PID: $SERVER_PID"
     echo -e "${GREEN}[INFO]${NC} Log file: /tmp/funasr_server.log"
