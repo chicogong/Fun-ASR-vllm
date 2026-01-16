@@ -132,9 +132,15 @@ if [ -t 0 ]; then
 else
     echo -e "${GREEN}[INFO]${NC} Starting in background mode..."
     echo -e "${GREEN}[INFO]${NC} Using Python: $PYTHON_CMD"
-    # Start with explicit Python path
+    # Start with explicit Python path and environment variables
     cd "$INSTALL_DIR"
-    nohup $PYTHON_CMD api_server.py > /tmp/funasr_server.log 2>&1 &
+    nohup env \
+        FUNASR_MODEL_DIR="$FUNASR_MODEL_DIR" \
+        FUNASR_VLLM_MODEL_DIR="$FUNASR_VLLM_MODEL_DIR" \
+        FUNASR_DEVICE="$FUNASR_DEVICE" \
+        FUNASR_VLLM_GPU_MEM="$FUNASR_VLLM_GPU_MEM" \
+        FUNASR_VLLM_MAX_MODEL_LEN="$FUNASR_VLLM_MAX_MODEL_LEN" \
+        $PYTHON_CMD api_server.py > /tmp/funasr_server.log 2>&1 &
     SERVER_PID=$!
     echo -e "${GREEN}[INFO]${NC} Server PID: $SERVER_PID"
     echo -e "${GREEN}[INFO]${NC} Log file: /tmp/funasr_server.log"
